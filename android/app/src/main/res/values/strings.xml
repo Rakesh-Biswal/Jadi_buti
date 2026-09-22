@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">Jadi-Buti</string>
+    <string name="company_name">ChefoTech</string>
+    <string name="tagline">Family medicine reminders, made simple</string>
+    <string name="safety_notice">Jadi-Buti does not diagnose or prescribe medication. Follow your healthcare professional\'s instructions.</string>
+    <string name="verify_prescription">Verify prescription information before confirming.</string>
+
+    <string name="channel_reminders">Medicine reminders</string>
+    <string name="channel_reminders_desc">Reminders when a family member\'s medicine is due</string>
+    <string name="channel_overdue">Overdue reminders</string>
+    <string name="channel_overdue_desc">Stronger follow-up when a dose has not been acknowledged</string>
+    <string name="channel_inventory">Low stock alerts</string>
+    <string name="channel_inventory_desc">Alerts when a medicine is running low</string>
+    <string name="channel_caregiver">Caregiver alerts</string>
+    <string name="channel_caregiver_desc">Alerts about missed doses of family members you care for</string>
+    <string name="channel_sync">Background sync</string>
+
+    <string name="action_taken">Mark as taken</string>
+    <string name="action_snooze">Snooze</string>
+    <string name="action_skip">Skip</string>
+
+    <string name="nav_home">Home</string>
+    <string name="nav_family">Family</string>
+    <string name="nav_medicines">Medicines</string>
+    <string name="nav_history">History</string>
+    <string name="nav_inventory">Stock</string>
+    <string name="nav_settings">Settings</string>
+</resources>

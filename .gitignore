@@ -1,0 +1,31 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+keystore.properties
+local.properties
+
+# Node / Next.js
+node_modules/
+.next/
+backend/storage/
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/*/build/
+android/.idea/
+android/app/release/
+android/app/debug/
+*.iml
+
+# Logs and scratch
+*.log
+.build-*.log
+.domain-test.log
+.npm-install.log
+.DS_Store
+Thumbs.db
+dist/

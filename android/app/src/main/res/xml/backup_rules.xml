@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Session tokens are device-bound and must not be restored on another device. -->
+    <exclude domain="sharedpref" path="jadibuti_session.xml" />
+    <exclude domain="file" path="datastore/" />
+</full-backup-content>
