@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,9 +22,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Refresh
@@ -61,6 +65,8 @@ import androidx.navigation.NavHostController
 import com.chefotech.jadibuti.data.doseTimes
 import com.chefotech.jadibuti.data.local.EventWithDetails
 import com.chefotech.jadibuti.data.local.MedicineDao
+import com.chefotech.jadibuti.data.local.MemberDao
+import com.chefotech.jadibuti.data.local.MemberEntity
 import com.chefotech.jadibuti.data.local.SyncStateDao
 import com.chefotech.jadibuti.data.prefs.SessionStore
 import com.chefotech.jadibuti.data.prefs.SettingsStore
@@ -76,8 +82,9 @@ import com.chefotech.jadibuti.reminders.ReminderScheduler
 import com.chefotech.jadibuti.sync.SyncRepository
 import com.chefotech.jadibuti.sync.SyncScheduler
 import com.chefotech.jadibuti.ui.components.AppCard
-import com.chefotech.jadibuti.ui.components.AppTopBar
 import com.chefotech.jadibuti.ui.components.BigButton
+import com.chefotech.jadibuti.ui.components.BigOutlinedButton
+import com.chefotech.jadibuti.ui.components.BrandTopBar
 import com.chefotech.jadibuti.ui.components.EmptyState
 import com.chefotech.jadibuti.ui.components.IconLabel
 import com.chefotech.jadibuti.ui.components.InfoBanner
@@ -118,6 +125,9 @@ data class SlotGroup(val slot: MealSlot, val members: List<MemberGroup>) {
     val taken get() = members.sumOf { m -> m.doses.count { it.displayStatus == EventStatus.TAKEN } }
 }
 
+/** Today's numbers for one family member, used by the chooser. */
+data class MemberToday(val member: MemberEntity, val total: Int, val taken: Int, val due: Int, val missed: Int)
+
 data class HomeState(
     val date: LocalDate = LocalDate.now(),
     val slots: List<SlotGroup> = emptyList(),
@@ -125,6 +135,11 @@ data class HomeState(
     val pendingSync: Int = 0,
     val lastSyncError: String? = null,
     val familyName: String = "",
+    val members: List<MemberToday> = emptyList(),
+    /** null = everyone. */
+    val focusMemberId: String? = null,
+    /** True when the family has several members and this process has not asked yet. */
+    val needsChoice: Boolean = false,
     val loaded: Boolean = false,
 ) {
     val all get() = slots.flatMap { it.members }.flatMap { it.doses }
@@ -133,6 +148,7 @@ data class HomeState(
     val due get() = all.count { it.displayStatus == EventStatus.DUE || it.displayStatus == EventStatus.SNOOZED }
     val missed get() = all.count { it.displayStatus == EventStatus.MISSED }
     val upcoming get() = all.count { it.displayStatus == EventStatus.UPCOMING }
+    val focusMember get() = members.firstOrNull { it.member.id == focusMemberId }?.member
 }
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -140,6 +156,7 @@ data class HomeState(
 class HomeViewModel @Inject constructor(
     private val events: EventRepository,
     private val medicines: MedicineDao,
+    private val memberDao: MemberDao,
     private val session: SessionStore,
     private val settings: SettingsStore,
     private val inventory: InventoryRepository,
@@ -148,6 +165,7 @@ class HomeViewModel @Inject constructor(
     private val syncRepo: SyncRepository,
     private val syncScheduler: SyncScheduler,
     private val controller: AlarmController,
+    private val focus: MemberFocus,
     val notifier: ReminderNotifier,
     val reminderScheduler: ReminderScheduler,
 ) : ViewModel() {
@@ -159,7 +177,10 @@ class HomeViewModel @Inject constructor(
     val state = session.snapshot.flatMapLatest { snap ->
         val familyId = snap.activeFamilyId ?: return@flatMapLatest flowOf(HomeState(loaded = true))
         val today = LocalDate.now().toString()
-        combine(events.observeForDate(familyId, today), settings.settings, inventory.observeStock(familyId), outbox.observeCount(), syncState.observe(familyId), medicines.observe(familyId), tick) { arr ->
+        combine(
+            events.observeForDate(familyId, today), settings.settings, inventory.observeStock(familyId), outbox.observeCount(),
+            syncState.observe(familyId), medicines.observe(familyId), tick, memberDao.observe(familyId), focus.selectedMemberId, focus.chosen,
+        ) { arr ->
             @Suppress("UNCHECKED_CAST")
             val rows = arr[0] as List<EventWithDetails>
             val s = arr[1] as com.chefotech.jadibuti.data.prefs.ReminderSettings
@@ -167,6 +188,10 @@ class HomeViewModel @Inject constructor(
             val pending = arr[3] as Int
             val sync = arr[4] as com.chefotech.jadibuti.data.local.SyncStateEntity?
             val meds = (arr[5] as List<com.chefotech.jadibuti.data.local.MedicineEntity>).associateBy { it.id }
+            val members = (arr[7] as List<MemberEntity>).filter { it.active }
+            val chosen = arr[9] as Boolean
+            val focusId = (arr[8] as String?)?.takeIf { id -> members.any { it.id == id } }
+
             val now = Instant.now()
             val missedAfter = Duration.ofMinutes(s.missedAfterMinutes.toLong())
             val doses = rows.map { r ->
@@ -180,14 +205,26 @@ class HomeViewModel @Inject constructor(
                     frequencyText = med?.let { frequencyLabel(it.frequency, it.weekdays.split(',').mapNotNull { d -> d.trim().toIntOrNull() }, it.intervalDays) } ?: "",
                 )
             }
+            val perMember = members.map { m ->
+                val mine = doses.filter { it.row.event.memberId == m.id }
+                MemberToday(m, mine.size, mine.count { it.displayStatus == EventStatus.TAKEN }, mine.count { it.displayStatus == EventStatus.DUE || it.displayStatus == EventStatus.SNOOZED }, mine.count { it.displayStatus == EventStatus.MISSED })
+            }
+            val visible = if (focusId != null) doses.filter { it.row.event.memberId == focusId } else doses
             val slots = MealSlot.entries.mapNotNull { slot ->
-                val inSlot = doses.filter { it.slot == slot }
+                val inSlot = visible.filter { it.slot == slot }
                 if (inSlot.isEmpty()) null
                 else SlotGroup(slot, inSlot.groupBy { it.row.event.memberId }.map { (id, list) -> MemberGroup(id, list.first().row.memberName, list.sortedBy { it.row.event.scheduledAt }) }.sortedBy { it.memberName })
             }
-            HomeState(LocalDate.now(), slots, stock.count { it.summary.lowStock }, pending, sync?.lastError, snap.activeFamilyName ?: "", loaded = true)
+            val lowStock = stock.count { it.summary.lowStock && (focusId == null || it.medicine.memberId == focusId) }
+            HomeState(
+                LocalDate.now(), slots, lowStock, pending, sync?.lastError, snap.activeFamilyName ?: "",
+                members = perMember, focusMemberId = focusId, needsChoice = members.size > 1 && !chosen, loaded = true,
+            )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
+
+    fun choose(memberId: String?) = focus.choose(memberId)
+    fun changeMember() = focus.askAgain()
 
     fun refresh() = viewModelScope.launch {
         tick.value = System.currentTimeMillis()
@@ -227,17 +264,24 @@ fun HomeScreen(nav: NavHostController, vm: HomeViewModel = hiltViewModel()) {
     }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.message.value = null } }
 
+    if (state.needsChoice) {
+        MemberChooser(state, onChoose = vm::choose)
+        return
+    }
+
     val visibleSlots = if (selected == null) state.slots else state.slots.filter { it.slot == selected }
+    val subtitle = listOfNotNull(state.familyName.ifBlank { null }, state.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, d MMM"))).joinToString(" · ")
 
     Scaffold(
         topBar = {
-            AppTopBar(state.familyName.ifBlank { "Today" }, subtitle = state.date.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM"))) {
+            BrandTopBar(subtitle = subtitle) {
                 IconButton(onClick = vm::refresh, modifier = Modifier.width(52.dp)) { Icon(Icons.Default.Refresh, contentDescription = "Sync now", tint = Color.White) }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (state.members.size > 1) item { ViewingRow(state, onChange = vm::changeMember) }
             item { TodaySummary(state) }
             if (!notificationsOk) item {
                 InfoBanner("Reminders are OFF: notifications are not allowed. Reminders will not appear until you enable them.", Tone.RED, icon = Icons.Default.NotificationsOff) {
@@ -261,17 +305,19 @@ fun HomeScreen(nav: NavHostController, vm: HomeViewModel = hiltViewModel()) {
             }
             if (state.total > 0) item { MealTabs(state, selected) { vm.selectedSlot.value = it } }
             if (state.loaded && state.total == 0) item {
-                EmptyState("Nothing scheduled today", "Add a family member and their medicines to start getting reminders.", icon = Icons.Default.Schedule)
-                BigButton("Add a medicine", icon = Icons.Default.Add, onClick = { nav.navigate(Routes.medicineEdit()) })
+                val who = state.focusMember?.name
+                EmptyState(if (who != null) "Nothing scheduled for $who today" else "Nothing scheduled today", "Add a medicine and its schedule to start getting reminders.", icon = Icons.Default.Schedule)
+                BigButton("Add a medicine", icon = Icons.Default.Add, onClick = { nav.navigate(Routes.medicineEdit(memberId = state.focusMemberId)) })
             }
             if (state.total > 0 && visibleSlots.isEmpty()) item { EmptyState("No ${selected?.label?.lowercase()} medicines today", "Nothing is scheduled for this meal. Tap another meal above.") }
             visibleSlots.forEach { slotGroup ->
                 item(key = "slot-${slotGroup.slot}") { SlotHeader(slotGroup) }
                 slotGroup.members.forEach { group ->
-                    item(key = "m-${slotGroup.slot}-${group.memberId}") {
+                    // When a single member is in focus their name is already in the header row.
+                    if (state.focusMemberId == null) item(key = "m-${slotGroup.slot}-${group.memberId}") {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                            MemberAvatar(group.memberName, 40)
-                            Spacer(Modifier.width(12.dp))
+                            MemberAvatar(group.memberName, 36)
+                            Spacer(Modifier.width(10.dp))
                             Text(group.memberName, style = MaterialTheme.typography.titleMedium)
                         }
                     }
@@ -280,6 +326,55 @@ fun HomeScreen(nav: NavHostController, vm: HomeViewModel = hiltViewModel()) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** Full-screen question shown on launch when the family has more than one member. */
+@Composable
+private fun MemberChooser(state: HomeState, onChoose: (String?) -> Unit) {
+    Scaffold(topBar = { BrandTopBar(subtitle = state.familyName.ifBlank { null }) }) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Whose medicines?", style = MaterialTheme.typography.headlineSmall)
+            Text("Choose a family member to see only their medication plan. You can change this any time from the Home screen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(4.dp))
+            state.members.forEach { m ->
+                AppCard(modifier = Modifier.clickable { onChoose(m.member.id) }, padding = 14) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        MemberAvatar(m.member.name, 56)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(m.member.name, style = MaterialTheme.typography.titleLarge)
+                            val summary = when {
+                                m.total == 0 -> "No doses today"
+                                m.missed > 0 -> "${m.missed} missed · ${m.taken}/${m.total} taken"
+                                m.due > 0 -> "${m.due} due now · ${m.taken}/${m.total} taken"
+                                else -> "${m.taken}/${m.total} taken today"
+                            }
+                            Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            BigOutlinedButton("Show everyone", icon = Icons.Default.Groups, onClick = { onChoose(null) })
+        }
+    }
+}
+
+@Composable
+private fun ViewingRow(state: HomeState, onChange: () -> Unit) {
+    val member = state.focusMember
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (member != null) MemberAvatar(member.name, 32) else Icon(Icons.Default.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Showing", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(member?.name ?: "Everyone", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            }
+            TextButton(onClick = onChange) { Text("Change", style = MaterialTheme.typography.labelLarge) }
         }
     }
 }
@@ -314,7 +409,7 @@ private fun TodaySummary(state: HomeState) {
 @Composable
 private fun MealTabs(state: HomeState, selected: MealSlot?, onSelect: (MealSlot?) -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text("All (${state.total})", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp)) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary, selectedLabelColor = Color.White))
+        FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text("All (${state.total})", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp)) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary, selectedLabelColor = MaterialTheme.colorScheme.onPrimary))
         MealSlot.entries.forEach { slot ->
             val g = state.slots.firstOrNull { it.slot == slot }
             val count = g?.total ?: 0
@@ -323,7 +418,7 @@ private fun MealTabs(state: HomeState, selected: MealSlot?, onSelect: (MealSlot?
                 onClick = { onSelect(if (selected == slot) null else slot) },
                 leadingIcon = { Icon(mealIcon(slot), contentDescription = null, modifier = Modifier.width(20.dp)) },
                 label = { Text(if (count > 0) "${slot.label} ($count)" else slot.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp)) },
-                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary, selectedLabelColor = Color.White, selectedLeadingIconColor = Color.White),
+                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary, selectedLabelColor = MaterialTheme.colorScheme.onPrimary, selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary),
             )
         }
     }
@@ -331,7 +426,7 @@ private fun MealTabs(state: HomeState, selected: MealSlot?, onSelect: (MealSlot?
 
 @Composable
 private fun SlotHeader(g: SlotGroup) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(mealIcon(g.slot), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(10.dp))
@@ -355,7 +450,7 @@ fun DoseCard(dose: DoseRow, onTaken: () -> Unit, onSkip: () -> Unit, onSnooze: (
     val (accentBg, accentFg) = com.chefotech.jadibuti.ui.components.toneColors(accent)
     AppCard(container = if (status == EventStatus.DUE || status == EventStatus.MISSED) accentBg.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surface, padding = 0) {
         Row {
-            Box(Modifier.width(8.dp).height(if (status.isTerminal) 120.dp else 210.dp).background(accentFg))
+            Box(Modifier.width(6.dp).height(if (status.isTerminal) 120.dp else 210.dp).background(accentFg))
             Column(Modifier.padding(16.dp).weight(1f)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(formatTime(e.time), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)

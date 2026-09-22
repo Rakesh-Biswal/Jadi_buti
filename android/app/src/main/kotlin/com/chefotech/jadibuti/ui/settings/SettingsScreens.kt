@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Stop
@@ -64,6 +65,7 @@ import com.chefotech.jadibuti.data.prefs.AlarmTone
 import com.chefotech.jadibuti.data.prefs.ReminderSettings
 import com.chefotech.jadibuti.data.prefs.SessionStore
 import com.chefotech.jadibuti.data.prefs.SettingsStore
+import com.chefotech.jadibuti.data.prefs.ThemeMode
 import com.chefotech.jadibuti.data.prefs.VibrationPattern
 import com.chefotech.jadibuti.data.repo.AuthRepository
 import com.chefotech.jadibuti.reminders.AlarmPlayer
@@ -148,6 +150,14 @@ fun SettingsScreen(nav: NavHostController, vm: SettingsViewModel = hiltViewModel
                     }
                 }
             }
+            SectionHeader("Appearance", icon = Icons.Default.Palette)
+            AppCard {
+                Column {
+                    Text("Theme", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(8.dp))
+                    ChoiceChips(ThemeMode.entries.map { it to it.label }, s.themeMode) { m -> vm.update { it.copy(themeMode = m) } }
+                }
+            }
             SectionHeader("Reminders", icon = Icons.Default.Alarm)
             SettingsRow(Icons.Default.MusicNote, "Alarm sound & vibration", "${s.tone.label} · Vibration ${if (s.vibrationEnabled) "on" else "off"} · Snooze ${s.snoozeMinutes} min") { nav.navigate(Routes.REMINDER_SETTINGS) }
             SettingsRow(Icons.AutoMirrored.Filled.HelpOutline, "Permissions & battery", if (notifOk && exactOk) "Everything is allowed" else "Action needed for reliable reminders") { nav.navigate(Routes.PERMISSIONS_HELP) }
@@ -159,7 +169,11 @@ fun SettingsScreen(nav: NavHostController, vm: SettingsViewModel = hiltViewModel
             Spacer(Modifier.height(4.dp))
             BigButton("Sign out", icon = Icons.Default.Logout, color = MaterialTheme.colorScheme.error, onClick = vm::logout)
             SectionHeader("About", icon = Icons.Default.Info)
-            Text("Jadi-Buti ${BuildConfig.VERSION_NAME} · by ChefoTech", style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Jadi-Buti ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.width(8.dp))
+                com.chefotech.jadibuti.ui.components.BrandBadge(onHeader = false)
+            }
             Text(stringRes(R.string.safety_notice), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("Reminders work offline. Your family's data syncs automatically when the phone is online.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(24.dp))

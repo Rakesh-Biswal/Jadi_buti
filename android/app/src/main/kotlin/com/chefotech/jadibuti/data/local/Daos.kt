@@ -95,6 +95,10 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE medicineId = :medicineId AND deleted = 0 AND localDate BETWEEN :from AND :to")
     suspend fun forMedicineBetween(medicineId: String, from: String, to: String): List<EventEntity>
 
+    /** Includes soft-deleted rows, so the generator can restore a retired dose under its existing id. */
+    @Query("SELECT * FROM events WHERE medicineId = :medicineId AND localDate BETWEEN :from AND :to")
+    suspend fun forMedicineBetweenAll(medicineId: String, from: String, to: String): List<EventEntity>
+
     @Query("SELECT id FROM events WHERE familyId = :familyId AND localDate BETWEEN :from AND :to")
     suspend fun idsBetween(familyId: String, from: String, to: String): List<String>
 

@@ -29,7 +29,10 @@ enum class AlarmTone(val label: String, val rawName: String?) {
 
 enum class VibrationPattern(val label: String) { OFF("Off"), GENTLE("Gentle"), NORMAL("Normal"), STRONG("Strong") }
 
+enum class ThemeMode(val label: String) { SYSTEM("Follow phone"), LIGHT("Light"), DARK("Dark") }
+
 data class ReminderSettings(
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val tone: AlarmTone = AlarmTone.CLASSIC,
     val customToneUri: String? = null,
     val vibrationEnabled: Boolean = true,
@@ -66,10 +69,12 @@ class SettingsStore @Inject constructor(@ApplicationContext private val context:
         val haptics = booleanPreferencesKey("haptics")
         val snooze = intPreferencesKey("snooze_minutes")
         val onboarding = booleanPreferencesKey("onboarding_done")
+        val themeMode = stringPreferencesKey("theme_mode")
     }
 
     val settings: Flow<ReminderSettings> = context.settingsDataStore.data.map { p ->
         ReminderSettings(
+            themeMode = p[Keys.themeMode]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
             tone = p[Keys.tone]?.let { runCatching { AlarmTone.valueOf(it) }.getOrNull() } ?: AlarmTone.CLASSIC,
             customToneUri = p[Keys.customToneUri],
             vibrationEnabled = p[Keys.vibrationEnabled] ?: true,
@@ -102,6 +107,7 @@ class SettingsStore @Inject constructor(@ApplicationContext private val context:
             p[Keys.haptics] = next.hapticsEnabled
             p[Keys.snooze] = next.snoozeMinutes
             p[Keys.onboarding] = next.onboardingDone
+            p[Keys.themeMode] = next.themeMode.name
         }
     }
 }

@@ -11,18 +11,24 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-val Green = Color(0xFF2E7D4F)
-val GreenDark = Color(0xFF1F5E3A)
-val Leaf = Color(0xFF7CB342)
-val Cream = Color(0xFFF6FAF6)
-val Amber = Color(0xFFF9A825)
-val AmberSoft = Color(0xFFFFF3CD)
-val Red = Color(0xFFD32F2F)
-val RedSoft = Color(0xFFFDE7E7)
-val GreenSoft = Color(0xFFE3F3E8)
-val Blue = Color(0xFF1E6FB8)
-val BlueSoft = Color(0xFFE3EEF9)
-val Grey = Color(0xFF6B7280)
+/*
+ * Jadi-Buti palette: a restrained clinical green, neutral surfaces and a small set of
+ * status colours. The header colour is fixed in both light and dark mode so the brand bar
+ * always reads the same.
+ */
+val Green = Color(0xFF1E6B47)
+val GreenDark = Color(0xFF14513A)
+val HeaderGreen = Green
+val Leaf = Color(0xFF3F8F63)
+val Cream = Color(0xFFF4F7F5)
+val Amber = Color(0xFFB7791F)
+val AmberSoft = Color(0xFFFBF1DC)
+val Red = Color(0xFFC0392B)
+val RedSoft = Color(0xFFFBE9E7)
+val GreenSoft = Color(0xFFDFEFE6)
+val Blue = Color(0xFF1F5FA8)
+val BlueSoft = Color(0xFFE4EDF8)
+val Grey = Color(0xFF64716A)
 
 private val LightColors = lightColorScheme(
     primary = Green,
@@ -31,26 +37,36 @@ private val LightColors = lightColorScheme(
     onPrimaryContainer = GreenDark,
     secondary = Leaf,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE8F5D9),
+    secondaryContainer = Color(0xFFE6F1EA),
     tertiary = Blue,
     background = Cream,
+    onBackground = Color(0xFF16231C),
     surface = Color.White,
-    surfaceVariant = Color(0xFFEDF3EE),
+    onSurface = Color(0xFF16231C),
+    surfaceVariant = Color(0xFFEAF0EC),
+    onSurfaceVariant = Color(0xFF4F5E56),
     error = Red,
     errorContainer = RedSoft,
-    outline = Color(0xFFB9C7BD),
+    outline = Color(0xFFCBD5CF),
+    outlineVariant = Color(0xFFE1E8E3),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF8BD3A6),
-    onPrimary = Color(0xFF0E3B22),
-    primaryContainer = Color(0xFF1F5E3A),
-    onPrimaryContainer = Color(0xFFD9F2E1),
-    secondary = Leaf,
-    background = Color(0xFF111814),
-    surface = Color(0xFF18211B),
-    surfaceVariant = Color(0xFF243029),
+    primary = Color(0xFF7FCFA3),
+    onPrimary = Color(0xFF0B3B25),
+    primaryContainer = Color(0xFF1B4D36),
+    onPrimaryContainer = Color(0xFFD5F0DF),
+    secondary = Color(0xFF8CC7A4),
+    tertiary = Color(0xFF8FB8EA),
+    background = Color(0xFF0F1613),
+    onBackground = Color(0xFFE6EDE8),
+    surface = Color(0xFF161E1A),
+    onSurface = Color(0xFFE6EDE8),
+    surfaceVariant = Color(0xFF1F2A24),
+    onSurfaceVariant = Color(0xFFB4C1B9),
     error = Color(0xFFFF8A80),
+    outline = Color(0xFF35453C),
+    outlineVariant = Color(0xFF2A3730),
 )
 
 /** Large, readable typography for elderly users. */

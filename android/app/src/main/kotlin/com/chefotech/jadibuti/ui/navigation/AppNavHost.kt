@@ -141,7 +141,7 @@ fun AppNavHost(launchEventId: String?, openStock: Boolean, onLaunchHandled: () -
                         onClick = { nav.navigate(tab.route) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } },
                         icon = { Icon(tab.icon, contentDescription = tab.label) },
                         label = { Text(tab.label, style = MaterialTheme.typography.labelMedium) },
-                        colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.White, indicatorColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary),
+                        colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.White, indicatorColor = com.chefotech.jadibuti.ui.theme.HeaderGreen, selectedTextColor = MaterialTheme.colorScheme.primary),
                     )
                 }
             }
